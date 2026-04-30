@@ -1,70 +1,86 @@
+import { renderHome } from './pages/home.js';
+import { renderCamera } from './pages/camera.js';
+import { renderAnalysis } from './pages/analysis.js';
+import { renderRecommendations } from './pages/recommendations.js';
+import { renderBeforeAfter } from './pages/beforeAfter.js';
+import { renderScans } from './pages/scans.js';
+import { renderInsights } from './pages/insights.js';
+import { renderProfile } from './pages/profile.js';
 import { renderBottomNav } from './components/BottomNav.js';
 
-/** Routes that should hide the bottom navigation */
-const NO_NAV_ROUTES = new Set(['/camera']);
+/** Pages that display the bottom navigation bar */
+const NAV_PAGES = new Set(['#/', '#/scans', '#/insights', '#/profile']);
 
-/** Maps hash paths to lazy page imports */
-const routes = {
-  '/': () => import('./pages/home.js'),
-  '/camera': () => import('./pages/camera.js'),
-  '/analysis': () => import('./pages/analysis.js'),
-  '/recommendations': () => import('./pages/recommendations.js'),
-  '/before-after': () => import('./pages/beforeAfter.js'),
-  '/scans': () => import('./pages/scans.js'),
-  '/insights': () => import('./pages/insights.js'),
-  '/profile': () => import('./pages/profile.js'),
+/** Route map: hash → render function */
+const ROUTES = {
+  '#/': renderHome,
+  '#/camera': renderCamera,
+  '#/analysis': renderAnalysis,
+  '#/recommendations': renderRecommendations,
+  '#/before-after': renderBeforeAfter,
+  '#/scans': renderScans,
+  '#/insights': renderInsights,
+  '#/profile': renderProfile,
 };
 
-const app = document.getElementById('app');
+/** History stack for back-button behavior */
+let historyStack = [];
 
-/** Extract path from hash, defaulting to '/' */
-function getPath() {
-  const hash = window.location.hash.slice(1);
-  if (!hash || hash === '/') return '/';
-  return hash.startsWith('/') ? hash : '/' + hash;
+/**
+ * Navigate to a new hash, pushing current location onto the stack.
+ * @param {string} hash - e.g. '#/camera'
+ */
+export function navigate(hash) {
+  historyStack.push(window.location.hash || '#/');
+  window.location.hash = hash;
 }
 
-/** Render a route into #app */
-async function render(path) {
-  const loader = routes[path] || routes['/'];
-
-  // Clear previous page
-  app.innerHTML = '';
-
-  const showNav = !NO_NAV_ROUTES.has(path);
-
-  if (showNav) {
-    const nav = renderBottomNav(path);
-    app.appendChild(nav);
-  }
-
-  const pageContainer = document.createElement('div');
-  pageContainer.className = showNav ? 'page-with-nav' : 'page-full';
-  app.appendChild(pageContainer);
-
-  try {
-    const module = await loader();
-    await module.default(pageContainer);
-  } catch (err) {
-    console.error('[Router] Page load error:', err);
-    pageContainer.innerHTML = `
-      <div style="padding:32px 20px; text-align:center; color:#999;">
-        <p style="font-size:1.1rem; margin-bottom:16px;">Page failed to load.</p>
-        <a href="#/" style="color:#E91E63;">Go Home</a>
-      </div>
-    `;
+/**
+ * Go back one step in the internal history, falling back to home.
+ */
+export function goBack() {
+  if (historyStack.length > 0) {
+    window.location.hash = historyStack.pop();
+  } else {
+    window.location.hash = '#/';
   }
 }
 
-export const router = {
-  init() {
-    window.addEventListener('hashchange', () => render(getPath()));
-    render(getPath());
-  },
-  navigate(path) {
-    window.location.hash = path;
-  },
-  back() {
-    window.history.back();
-  },
-};
+/**
+ * Initialize the router: render on load and on each hashchange.
+ */
+export function initRouter() {
+  const app = document.getElementById('app');
+
+  function render() {
+    const hash = window.location.hash || '#/';
+    const routeFn = ROUTES[hash] || renderHome;
+    const showNav = NAV_PAGES.has(hash);
+
+    // Clear previous content
+    app.innerHTML = '';
+
+    // Page container
+    const pageContainer = document.createElement('div');
+    pageContainer.className = showNav ? 'page-container with-nav' : 'page-container';
+    app.appendChild(pageContainer);
+
+    // Bottom nav for tabbed pages
+    if (showNav) {
+      const navEl = renderBottomNav(hash);
+      app.appendChild(navEl);
+    }
+
+    // Render the page into the container
+    routeFn(pageContainer);
+  }
+
+  window.addEventListener('hashchange', render);
+
+  // Ensure a default hash exists
+  if (!window.location.hash) {
+    window.location.hash = '#/';
+  }
+
+  render();
+}
