@@ -78,7 +78,7 @@ export function cameraPage() {
           </div>
         </div>
         <p class="measure-section__note">
-          Native AR measurement (ARKit/ARCore) is not available from a web PWA. Use your phone built-in Measure app or a tape, then enter values here. Measurements are used to filter recommendations to products that actually fit.
+          Tip: use your phone Measure app (iOS) or an AR ruler (Android), then enter the values here. We drop products that won't fit before showing recommendations.
         </p>
       </details>
 

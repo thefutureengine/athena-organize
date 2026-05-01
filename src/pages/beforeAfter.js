@@ -12,7 +12,7 @@ import { createBeforeAfterSlider } from '../components/BeforeAfterSlider.js';
  * of the user's transformed space. DALL-E generates from text, not from
  * the user's actual photo.
  */
-export async function beforeAfterPage() {
+export function beforeAfterPage() {
   const container = document.createElement('div');
   container.className = 'page before-after-page';
 
@@ -36,9 +36,26 @@ export async function beforeAfterPage() {
     </div>
   `;
 
-  const contentEl = container.querySelector('#baContent');
+  loadBeforeAfter(container).catch((err) => {
+    const contentEl = container.querySelector('#baContent');
+    if (contentEl) {
+      contentEl.innerHTML = `
+        <div class="error-state">
+          Failed to generate inspiration image: ${escHtml(err.message)}
+          <br><br>
+          <button class="btn btn--secondary" onclick="history.back()">← Go Back</button>
+        </div>
+      `;
+    }
+  });
 
-  // Retrieve data from sessionStorage
+  return container;
+}
+
+async function loadBeforeAfter(container) {
+  const contentEl = container.querySelector('#baContent');
+  if (!contentEl) return;
+
   let analysis, photoBase64, photoMime;
   try {
     analysis     = JSON.parse(sessionStorage.getItem('athena_analysis') || 'null');
@@ -60,12 +77,12 @@ export async function beforeAfterPage() {
     contentEl.querySelector('#goScan')?.addEventListener('click', () => {
       window.location.hash = '#/camera';
     });
-    return container;
+    return;
   }
 
   const planSummary = analysis.summary || analysis.issues?.join('. ') || 'A cluttered space needing organization.';
 
-  try {
+  {
     const { afterImageUrl } = await generateImages({
       originalImageBase64: photoBase64 || undefined,
       planSummary,
@@ -202,17 +219,7 @@ export async function beforeAfterPage() {
       }
     });
 
-  } catch (err) {
-    contentEl.innerHTML = `
-      <div class="error-state">
-        Failed to generate inspiration image: ${escHtml(err.message)}
-        <br><br>
-        <button class="btn btn--secondary" onclick="history.back()">← Go Back</button>
-      </div>
-    `;
   }
-
-  return container;
 }
 
 function escHtml(str) {

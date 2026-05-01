@@ -1,17 +1,19 @@
 import { searchProducts } from '../api.js';
 
 /**
- * Recommendations page — renders tiered product options (good / better / best)
- * per organization issue, with chip-based tier selector and animated product cards.
+ * Recommendations page — returns its container synchronously with a loading
+ * state, then fetches products asynchronously and fills in. (Returning the
+ * container after `await` would leave the screen blank until the fetch
+ * resolved — the router only mounts what the function returns.)
  */
-export async function recommendationsPage() {
+export function recommendationsPage() {
   const container = document.createElement('div');
   container.className = 'page recommendations-page';
 
   container.innerHTML = `
     <div class="recs-header">
       <h2>Recommendations</h2>
-      <p>Curated products to resolve each issue — three price tiers per problem.</p>
+      <p>Products tailored to each issue Athena found.</p>
     </div>
     <div id="recsContent">
       <div class="loading-state">
@@ -26,9 +28,26 @@ export async function recommendationsPage() {
     </div>
   `;
 
-  const contentEl = container.querySelector('#recsContent');
+  loadRecommendations(container).catch((err) => {
+    const contentEl = container.querySelector('#recsContent');
+    if (contentEl) {
+      contentEl.innerHTML = `
+        <div class="error-state">
+          Failed to load recommendations: ${escHtml(err.message)}
+          <br><br>
+          <button class="btn btn--secondary" onclick="location.reload()">Retry</button>
+        </div>
+      `;
+    }
+  });
 
-  // Retrieve analysis from sessionStorage
+  return container;
+}
+
+async function loadRecommendations(container) {
+  const contentEl = container.querySelector('#recsContent');
+  if (!contentEl) return;
+
   let analysis;
   try {
     analysis = JSON.parse(sessionStorage.getItem('athena_analysis') || 'null');
@@ -48,76 +67,53 @@ export async function recommendationsPage() {
     contentEl.querySelector('#goScan')?.addEventListener('click', () => {
       window.location.hash = '#/camera';
     });
-    return container;
+    return;
   }
 
-  // Pull optional measurements so the server can filter recommendations
-  // to products that actually fit the space (cuts wasted recs + tokens).
   let measurements = null;
   try {
     measurements = JSON.parse(sessionStorage.getItem('athena_measurements') || 'null');
   } catch {}
 
-  try {
-    const result = await searchProducts({ issues: analysis.issues, measurements });
-    const recommendations = result.recommendations || [];
+  const result = await searchProducts({ issues: analysis.issues, measurements });
+  const recommendations = result.recommendations || [];
 
-    if (recommendations.length === 0) {
-      contentEl.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-state__icon">🛍️</div>
-          <p class="empty-state__title">No products found</p>
-          <p>We couldn't find product matches right now. Try scanning again later.</p>
-        </div>
-      `;
-      return container;
-    }
-
-    // Persist recommendations for before/after page
-    sessionStorage.setItem('athena_recommendations', JSON.stringify(recommendations));
-
-    contentEl.innerHTML = '';
-
-    // Render each issue group
-    recommendations.forEach((item) => {
-      if (!item || !item.issue) return;
-
-      const group = buildIssueGroup(item);
-      contentEl.appendChild(group);
-    });
-
-    // "Generate Before/After" CTA at the bottom
-    const cta = document.createElement('div');
-    cta.className = 'mt-16';
-    cta.innerHTML = `
-      <button class="btn btn--primary btn--full" id="genBtn">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 9 6 6m0-6-6 6"/>
-        </svg>
-        Generate AI Vision
-      </button>
-    `;
-    cta.querySelector('#genBtn').addEventListener('click', () => {
-      window.location.hash = '#/before-after';
-    });
-    contentEl.appendChild(cta);
-
-  } catch (err) {
+  if (recommendations.length === 0) {
     contentEl.innerHTML = `
-      <div class="error-state">
-        Failed to load recommendations: ${escHtml(err.message)}
-        <br><br>
-        <button class="btn btn--secondary" onclick="location.reload()">Retry</button>
+      <div class="empty-state">
+        <div class="empty-state__icon">🛍️</div>
+        <p class="empty-state__title">No products found</p>
+        <p>We couldn't find product matches right now. Try scanning again later.</p>
       </div>
     `;
+    return;
   }
 
-  return container;
+  sessionStorage.setItem('athena_recommendations', JSON.stringify(recommendations));
+
+  contentEl.innerHTML = '';
+
+  recommendations.forEach((item) => {
+    if (!item || !item.issue) return;
+    contentEl.appendChild(buildIssueGroup(item));
+  });
+
+  const cta = document.createElement('div');
+  cta.className = 'mt-16';
+  cta.innerHTML = `
+    <button class="btn btn--primary btn--full" id="genBtn" type="button">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 9 6 6m0-6-6 6"/>
+      </svg>
+      Generate AI Vision
+    </button>
+  `;
+  cta.querySelector('#genBtn').addEventListener('click', () => {
+    window.location.hash = '#/before-after';
+  });
+  contentEl.appendChild(cta);
 }
 
-/**
- * Build one issue recommendation group with tier chips + product card.
- */
 function buildIssueGroup(item) {
   const { issue, tiers } = item;
   const defaultTier = tiers?.better ? 'better' : tiers?.good ? 'good' : 'best';
@@ -125,13 +121,11 @@ function buildIssueGroup(item) {
   const group = document.createElement('div');
   group.className = 'card issue-rec-group';
 
-  // Issue title
   const title = document.createElement('div');
   title.className = 'issue-rec-group__title';
   title.textContent = issue;
   group.appendChild(title);
 
-  // Check which tiers have actual products
   const availableTiers = ['good', 'better', 'best'].filter((t) => tiers?.[t] != null);
 
   if (availableTiers.length === 0) {
@@ -142,7 +136,6 @@ function buildIssueGroup(item) {
     return group;
   }
 
-  // Tier selector chips
   const chipRow = document.createElement('div');
   chipRow.className = 'tier-selector';
 
@@ -152,6 +145,7 @@ function buildIssueGroup(item) {
   const chips = {};
   availableTiers.forEach((tier) => {
     const chip = document.createElement('button');
+    chip.type = 'button';
     chip.className = `tier-chip${tier === activeTier ? ' active' : ''}`;
     chip.textContent = tierLabels[tier];
     chip.dataset.tier = tier;
@@ -160,15 +154,12 @@ function buildIssueGroup(item) {
   });
   group.appendChild(chipRow);
 
-  // Product card container
   const cardSlot = document.createElement('div');
   cardSlot.className = 'mt-12';
   group.appendChild(cardSlot);
 
-  // Render initial product
   renderProduct(cardSlot, tiers[activeTier]);
 
-  // Chip click handlers
   availableTiers.forEach((tier) => {
     chips[tier].addEventListener('click', () => {
       availableTiers.forEach((t) => chips[t].classList.remove('active'));
@@ -180,9 +171,6 @@ function buildIssueGroup(item) {
   return group;
 }
 
-/**
- * Renders a ProductItem into the given container.
- */
 function renderProduct(containerEl, product) {
   containerEl.innerHTML = '';
   if (!product) {
@@ -193,7 +181,6 @@ function renderProduct(containerEl, product) {
   const card = document.createElement('div');
   card.className = 'card product-card';
 
-  // Thumbnail
   const thumbEl = document.createElement('div');
   if (product.thumbnail) {
     const img = document.createElement('img');
@@ -201,16 +188,13 @@ function renderProduct(containerEl, product) {
     img.src = product.thumbnail;
     img.alt = escHtml(product.name);
     img.loading = 'lazy';
-    img.onerror = () => {
-      img.replaceWith(makePlaceholderThumb());
-    };
+    img.onerror = () => { img.replaceWith(makePlaceholderThumb()); };
     thumbEl.appendChild(img);
   } else {
     thumbEl.appendChild(makePlaceholderThumb());
   }
   card.appendChild(thumbEl);
 
-  // Info
   const info = document.createElement('div');
   info.className = 'product-card__info';
 
