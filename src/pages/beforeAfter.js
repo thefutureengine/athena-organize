@@ -1,5 +1,5 @@
 import { generateImages, saveProject } from '../api.js';
-import { BeforeAfterSlider } from '../components/BeforeAfterSlider.js';
+import { createBeforeAfterSlider } from '../components/BeforeAfterSlider.js';
 
 /**
  * Before/After page
@@ -99,12 +99,7 @@ export async function beforeAfterPage() {
 
     if (beforeSrc && afterImageUrl) {
       // Full interactive slider
-      const slider = BeforeAfterSlider({
-        beforeSrc,
-        afterSrc: afterImageUrl,
-        beforeAlt: 'Your space — before',
-        afterAlt: 'AI inspiration — an organized vision',
-      });
+      const slider = createBeforeAfterSlider(beforeSrc, afterImageUrl);
       sliderWrap.appendChild(slider);
 
       // Floating labels
