@@ -1,117 +1,254 @@
-import { navigate, goBack } from '../router.js';
-import { generateImages } from '../api.js';
+import { searchProducts } from '../api.js';
 
 /**
- * Recommendations page — product cards with thumbnail, name, price,
- * retailer, and a "Buy" link; CTA to generate before/after imagery.
- * @param {HTMLElement} container
+ * Recommendations page — renders tiered product options (good / better / best)
+ * per organization issue, with chip-based tier selector and animated product cards.
  */
-export function renderRecommendations(container) {
+export async function recommendationsPage() {
+  const container = document.createElement('div');
+  container.className = 'page recommendations-page';
+
   container.innerHTML = `
-    <div class="page page--recommendations">
-      <header class="page-header">
-        <button class="btn-icon" id="backBtn" aria-label="Go back">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M19 12H5M12 5l-7 7 7 7"/>
+    <div class="recs-header">
+      <h2>Recommendations</h2>
+      <p>Curated products to resolve each issue — three price tiers per problem.</p>
+    </div>
+    <div id="recsContent">
+      <div class="loading-state">
+        <div class="spinner">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <circle cx="18" cy="18" r="14" stroke="rgba(255,255,255,0.1)" stroke-width="3"/>
+            <path d="M32 18 A14 14 0 0 0 18 4" stroke="#E91E63" stroke-width="3" stroke-linecap="round"/>
           </svg>
-        </button>
-        <h2 class="page-header__title">Recommendations</h2>
-        <div style="width:40px"></div>
-      </header>
-
-      <div class="recs__body">
-        <div class="recs__list" id="recsList"></div>
-
-        <button class="btn btn--primary btn--full" id="beforeAfterBtn" style="margin-top:8px;">
-          See Before &amp; After
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M5 12h14M12 5l7 7-7 7"/>
-          </svg>
-        </button>
+        </div>
+        <p>Finding the best products for your space…</p>
       </div>
     </div>
   `;
 
-  document.getElementById('backBtn').addEventListener('click', goBack);
+  const contentEl = container.querySelector('#recsContent');
 
-  const list = document.getElementById('recsList');
-  const raw = sessionStorage.getItem('recommendations');
-
-  let recs = [];
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      recs = Array.isArray(parsed) ? parsed : (parsed.products || []);
-    } catch {
-      recs = [];
-    }
+  // Retrieve analysis from sessionStorage
+  let analysis;
+  try {
+    analysis = JSON.parse(sessionStorage.getItem('athena_analysis') || 'null');
+  } catch {
+    analysis = null;
   }
 
-  if (recs.length === 0) {
-    list.innerHTML = `
+  if (!analysis || !Array.isArray(analysis.issues) || analysis.issues.length === 0) {
+    contentEl.innerHTML = `
       <div class="empty-state">
-        <p class="empty-state__text">No product recommendations available. Try scanning a different space.</p>
+        <div class="empty-state__icon">🔍</div>
+        <p class="empty-state__title">No analysis found</p>
+        <p>Please scan a space first to get recommendations.</p>
+        <button class="btn btn--primary mt-16" id="goScan">Scan a Space</button>
       </div>
     `;
-  } else {
-    list.innerHTML = recs.map(product => `
-      <div class="product-card card">
-        <div class="product-card__img-wrap">
-          ${product.thumbnail
-            ? `<img
-                src="${escapeHtml(product.thumbnail)}"
-                alt="${escapeHtml(product.name || 'Product')}"
-                class="product-card__img"
-                loading="lazy"
-                onerror="this.parentElement.innerHTML='<div class=\\'product-card__img-placeholder\\' aria-hidden=\\'true\\'>🛒</div>'"
-              />`
-            : `<div class="product-card__img-placeholder" aria-hidden="true">🛒</div>`
-          }
-        </div>
-        <div class="product-card__info">
-          <p class="product-card__name" title="${escapeHtml(product.name || '')}">${escapeHtml(product.name || 'Product')}</p>
-          ${product.retailer ? `<p class="product-card__retailer">${escapeHtml(product.retailer)}</p>` : ''}
-          <p class="product-card__price">${escapeHtml(product.price || 'Price varies')}</p>
-        </div>
-        <a
-          href="${escapeHtml(product.link || '#')}"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn btn--outline product-card__btn"
-          aria-label="Buy ${escapeHtml(product.name || 'product')}"
-        >Buy</a>
-      </div>
-    `).join('');
+    contentEl.querySelector('#goScan')?.addEventListener('click', () => {
+      window.location.hash = '#/camera';
+    });
+    return container;
   }
 
-  document.getElementById('beforeAfterBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('beforeAfterBtn');
-    btn.disabled = true;
-    btn.innerHTML = `
-      <div class="spinner" style="width:18px;height:18px;border-width:2px;" aria-hidden="true"></div>
-      Generating…
-    `;
+  try {
+    const result = await searchProducts({ issues: analysis.issues });
+    const recommendations = result.recommendations || [];
 
-    try {
-      const imageBase64 = sessionStorage.getItem('capturedImageBase64') || '';
-      const analysis = JSON.parse(sessionStorage.getItem('analysisResult') || '{}');
-      const planSummary = analysis.summary || 'Organize and declutter the space for maximum efficiency';
-
-      const result = await generateImages(imageBase64, planSummary);
-      sessionStorage.setItem('generatedAfterUrl', result.afterImageUrl || '');
-      navigate('#/before-after');
-    } catch (err) {
-      btn.disabled = false;
-      btn.innerHTML = `See Before &amp; After
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M5 12h14M12 5l7 7-7 7"/>
-        </svg>`;
-      alert(`Could not generate images: ${err.message}\n\nEnsure OPENAI_API_KEY is set in your Netlify environment.`);
+    if (recommendations.length === 0) {
+      contentEl.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state__icon">🛍️</div>
+          <p class="empty-state__title">No products found</p>
+          <p>We couldn't find product matches right now. Try scanning again later.</p>
+        </div>
+      `;
+      return container;
     }
-  });
+
+    // Persist recommendations for before/after page
+    sessionStorage.setItem('athena_recommendations', JSON.stringify(recommendations));
+
+    contentEl.innerHTML = '';
+
+    // Render each issue group
+    recommendations.forEach((item) => {
+      if (!item || !item.issue) return;
+
+      const group = buildIssueGroup(item);
+      contentEl.appendChild(group);
+    });
+
+    // "Generate Before/After" CTA at the bottom
+    const cta = document.createElement('div');
+    cta.className = 'mt-16';
+    cta.innerHTML = `
+      <button class="btn btn--primary btn--full" id="genBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 9 6 6m0-6-6 6"/>
+        </svg>
+        Generate AI Vision
+      </button>
+    `;
+    cta.querySelector('#genBtn').addEventListener('click', () => {
+      window.location.hash = '#/before-after';
+    });
+    contentEl.appendChild(cta);
+
+  } catch (err) {
+    contentEl.innerHTML = `
+      <div class="error-state">
+        Failed to load recommendations: ${escHtml(err.message)}
+        <br><br>
+        <button class="btn btn--secondary" onclick="location.reload()">Retry</button>
+      </div>
+    `;
+  }
+
+  return container;
 }
 
-function escapeHtml(str) {
+/**
+ * Build one issue recommendation group with tier chips + product card.
+ */
+function buildIssueGroup(item) {
+  const { issue, tiers } = item;
+  const defaultTier = tiers?.better ? 'better' : tiers?.good ? 'good' : 'best';
+
+  const group = document.createElement('div');
+  group.className = 'card issue-rec-group';
+
+  // Issue title
+  const title = document.createElement('div');
+  title.className = 'issue-rec-group__title';
+  title.textContent = issue;
+  group.appendChild(title);
+
+  // Check which tiers have actual products
+  const availableTiers = ['good', 'better', 'best'].filter((t) => tiers?.[t] != null);
+
+  if (availableTiers.length === 0) {
+    const empty = document.createElement('p');
+    empty.style.cssText = 'font-size:0.85rem;color:var(--text-muted);padding:8px 0;';
+    empty.textContent = 'No specific product recommendations found for this issue.';
+    group.appendChild(empty);
+    return group;
+  }
+
+  // Tier selector chips
+  const chipRow = document.createElement('div');
+  chipRow.className = 'tier-selector';
+
+  const tierLabels = { good: '👍 Good', better: '⭐ Better', best: '🏆 Best' };
+  const activeTier = availableTiers.includes(defaultTier) ? defaultTier : availableTiers[0];
+
+  const chips = {};
+  availableTiers.forEach((tier) => {
+    const chip = document.createElement('button');
+    chip.className = `tier-chip${tier === activeTier ? ' active' : ''}`;
+    chip.textContent = tierLabels[tier];
+    chip.dataset.tier = tier;
+    chips[tier] = chip;
+    chipRow.appendChild(chip);
+  });
+  group.appendChild(chipRow);
+
+  // Product card container
+  const cardSlot = document.createElement('div');
+  cardSlot.className = 'mt-12';
+  group.appendChild(cardSlot);
+
+  // Render initial product
+  renderProduct(cardSlot, tiers[activeTier]);
+
+  // Chip click handlers
+  availableTiers.forEach((tier) => {
+    chips[tier].addEventListener('click', () => {
+      availableTiers.forEach((t) => chips[t].classList.remove('active'));
+      chips[tier].classList.add('active');
+      renderProduct(cardSlot, tiers[tier]);
+    });
+  });
+
+  return group;
+}
+
+/**
+ * Renders a ProductItem into the given container.
+ */
+function renderProduct(containerEl, product) {
+  containerEl.innerHTML = '';
+  if (!product) {
+    containerEl.innerHTML = `<p style="font-size:0.82rem;color:var(--text-muted);">No product available for this tier.</p>`;
+    return;
+  }
+
+  const card = document.createElement('div');
+  card.className = 'card product-card';
+
+  // Thumbnail
+  const thumbEl = document.createElement('div');
+  if (product.thumbnail) {
+    const img = document.createElement('img');
+    img.className = 'product-card__thumb';
+    img.src = product.thumbnail;
+    img.alt = escHtml(product.name);
+    img.loading = 'lazy';
+    img.onerror = () => {
+      img.replaceWith(makePlaceholderThumb());
+    };
+    thumbEl.appendChild(img);
+  } else {
+    thumbEl.appendChild(makePlaceholderThumb());
+  }
+  card.appendChild(thumbEl);
+
+  // Info
+  const info = document.createElement('div');
+  info.className = 'product-card__info';
+
+  const name = document.createElement('div');
+  name.className = 'product-card__name';
+  name.title = product.name;
+  name.textContent = product.name;
+  info.appendChild(name);
+
+  const meta = document.createElement('div');
+  meta.className = 'product-card__meta';
+  meta.innerHTML = `
+    <span class="product-card__price">${escHtml(product.price)}</span>
+    <span class="product-card__retailer">${escHtml(product.retailer)}</span>
+  `;
+  info.appendChild(meta);
+
+  const buyLink = document.createElement('a');
+  buyLink.className = 'product-card__buy';
+  buyLink.href = product.link;
+  buyLink.target = '_blank';
+  buyLink.rel = 'noopener noreferrer';
+  buyLink.innerHTML = `
+    Buy
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:4px">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+      <polyline points="15 3 21 3 21 9"/>
+      <line x1="10" y1="14" x2="21" y2="3"/>
+    </svg>
+  `;
+  info.appendChild(buyLink);
+
+  card.appendChild(info);
+  containerEl.appendChild(card);
+}
+
+function makePlaceholderThumb() {
+  const el = document.createElement('div');
+  el.className = 'product-card__thumb-placeholder';
+  el.textContent = '📦';
+  return el;
+}
+
+function escHtml(str) {
+  if (str == null) return '';
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
