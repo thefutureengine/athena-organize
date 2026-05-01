@@ -1527,3 +1527,63 @@ label {
 /* ── Safe area helpers ──────────────────────────────────────────── */
 .safe-top    { padding-top: env(safe-area-inset-top, 0px); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ── Reference-Object Tip (camera page) ─────────────────────────── */
+.ref-object-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(233,30,99,0.10), rgba(233,30,99,0.04));
+  border: 1px solid rgba(233,30,99,0.22);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+}
+
+.ref-object-tip[hidden] { display: none; }
+
+.ref-object-tip__icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(233,30,99,0.18);
+  color: var(--pink);
+  border-radius: 8px;
+}
+
+.ref-object-tip__copy { display: flex; flex-direction: column; gap: 4px; }
+.ref-object-tip__copy strong {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+  color: var(--text-primary);
+}
+.ref-object-tip__copy span {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-sec);
+}
+
+/* ── Auto-estimated measurement badge ───────────────────────────── */
+.analysis__measurement-pill.is-vision {
+  background: linear-gradient(135deg, rgba(233,30,99,0.12), rgba(233,30,99,0.04));
+  border-color: rgba(233,30,99,0.3);
+  color: var(--text-primary);
+}
+
+.analysis__measurement-tag {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  padding: 2px 7px;
+  background: var(--pink);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  border-radius: 999px;
+}

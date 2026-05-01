@@ -45,7 +45,7 @@ export function renderAnalysis(container) {
   const { score, issues, summary } = analysis;
   const scoreLabel = score >= 80 ? 'Great' : score >= 60 ? 'Good' : score >= 40 ? 'Fair' : 'Needs Work';
 
-  // Surface measurements if user provided any
+  // Surface measurements if present — manual or vision-estimated
   let measurementsBadge = '';
   try {
     const m = JSON.parse(sessionStorage.getItem('athena_measurements') || 'null');
@@ -55,12 +55,17 @@ export function renderAnalysis(container) {
       if (m.depth)  parts.push(`D ${m.depth}${m.unit}`);
       if (m.height) parts.push(`H ${m.height}${m.unit}`);
       if (parts.length) {
+        const isVision = m.source === 'vision';
+        const visionTag = isVision
+          ? `<span class="analysis__measurement-tag" title="Estimated from reference object in photo">✨ Auto</span>`
+          : '';
         measurementsBadge = `
-          <div class="analysis__measurement-pill" aria-label="Room dimensions">
+          <div class="analysis__measurement-pill ${isVision ? 'is-vision' : ''}" aria-label="Room dimensions${isVision ? ' (auto-estimated)' : ''}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 7h18M3 17h18M7 7v10M17 7v10"/>
             </svg>
             <span>${parts.join(' · ')}</span>
+            ${visionTag}
           </div>
         `;
       }

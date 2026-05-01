@@ -37,6 +37,19 @@ export function cameraPage() {
       <input type="file" id="camera-input" accept="image/*" capture="environment">
     </div>
 
+    <div class="ref-object-tip" id="refObjectTip">
+      <div class="ref-object-tip__icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="6" width="18" height="12" rx="2"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+        </svg>
+      </div>
+      <div class="ref-object-tip__copy">
+        <strong>Pro tip — auto-measure</strong>
+        <span>Place a credit card or dollar bill in the photo and Athena will estimate the dimensions for you. No tape needed.</span>
+      </div>
+    </div>
+
     <section class="camera-preview" id="previewWrap" hidden>
       <div class="camera-preview__media">
         <img id="previewImg" src="" alt="Selected photo preview">
@@ -116,6 +129,7 @@ export function cameraPage() {
   `;
 
   const dropzone     = container.querySelector('#dropzone');
+  const refTip       = container.querySelector('#refObjectTip');
   const fileInput    = container.querySelector('#camera-input');
   const previewWrap  = container.querySelector('#previewWrap');
   const previewImg   = container.querySelector('#previewImg');
@@ -150,6 +164,7 @@ export function cameraPage() {
     previewImg.src = URL.createObjectURL(file);
     previewWrap.hidden = false;
     dropzone.hidden = true;
+    if (refTip) refTip.hidden = true;
     tipsCard.hidden = true;
     errorEl.hidden = true;
   }
@@ -169,6 +184,7 @@ export function cameraPage() {
     previewImg.src = '';
     previewWrap.hidden = true;
     dropzone.hidden = false;
+    if (refTip) refTip.hidden = false;
     tipsCard.hidden = false;
     errorEl.hidden = true;
   });
@@ -196,13 +212,14 @@ export function cameraPage() {
     const w = parseFloat(widthInput.value);
     const d = parseFloat(depthInput.value);
     const h = parseFloat(heightInput.value);
-    const hasAny = [w, d, h].some(n => Number.isFinite(n) && n > 0);
-    const measurements = hasAny
+    const hasManual = [w, d, h].some(n => Number.isFinite(n) && n > 0);
+    const manualMeasurements = hasManual
       ? {
           width:  Number.isFinite(w) && w > 0 ? w : null,
           depth:  Number.isFinite(d) && d > 0 ? d : null,
           height: Number.isFinite(h) && h > 0 ? h : null,
           unit: currentUnit,
+          source: 'manual',
         }
       : null;
 
@@ -213,8 +230,24 @@ export function cameraPage() {
       sessionStorage.setItem('athena_analysis', JSON.stringify(result));
       sessionStorage.setItem('athena_photo_base64', imageBase64);
       sessionStorage.setItem('athena_photo_mime', selectedFile.type);
-      if (measurements) {
-        sessionStorage.setItem('athena_measurements', JSON.stringify(measurements));
+
+      // Measurements priority: manual entry wins over vision estimate.
+      // Vision estimate is auto-applied when the user did not fill anything in.
+      let storedMeasurements = manualMeasurements;
+      if (!storedMeasurements && result.estimatedDimensions) {
+        const ed = result.estimatedDimensions;
+        storedMeasurements = {
+          width:  ed.width  || null,
+          depth:  ed.depth  || null,
+          height: ed.height || null,
+          unit: ed.unit || 'in',
+          source: 'vision',
+          confidence: ed.confidence || 'low',
+          referenceUsed: ed.referenceUsed || null,
+        };
+      }
+      if (storedMeasurements) {
+        sessionStorage.setItem('athena_measurements', JSON.stringify(storedMeasurements));
       } else {
         sessionStorage.removeItem('athena_measurements');
       }
