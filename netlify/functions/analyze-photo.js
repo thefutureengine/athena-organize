@@ -31,7 +31,7 @@ exports.handler = async function (event) {
 
   let imageBase64;
   try {
-    ({ imageBase64 } = JSON.parse(event.body || '{}'));
+    ({ imageBase64, mimeType } = JSON.parse(event.body || '{}'));
   } catch {
     return {
       statusCode: 400,
@@ -64,7 +64,7 @@ exports.handler = async function (event) {
     const client = new Anthropic({ apiKey });
 
     const message = await client.messages.create({
-      model:      'claude-opus-4-5',
+      model:      'claude-sonnet-4-6',
       max_tokens: 1024,
       messages: [
         {
@@ -74,7 +74,7 @@ exports.handler = async function (event) {
               type:   'image',
               source: {
                 type:       'base64',
-                media_type: 'image/jpeg',
+                media_type: (mimeType || 'image/jpeg'),
                 data:       imageBase64,
               },
             },
