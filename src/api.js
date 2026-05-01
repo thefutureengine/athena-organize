@@ -1,13 +1,13 @@
 /**
  * Fetch wrappers for the four Netlify Functions.
  * All functions are POST, return JSON, and handle CORS.
+ *
+ * All wrappers accept a single options object so call sites can pass
+ * named fields without worrying about positional order.
  */
 
 const BASE = '/.netlify/functions';
 
-/**
- * Internal fetch helper with error handling.
- */
 async function apiFetch(endpoint, body) {
   let res;
   try {
@@ -36,42 +36,36 @@ async function apiFetch(endpoint, body) {
 
 /**
  * POST /analyze-photo
- * Sends a base64-encoded image to Claude for organization analysis.
- * @param {string} imageBase64 - Raw base64 image data (no data: prefix)
- * @returns {{ score: number, issues: string[], summary: string }}
+ * @param {{imageBase64: string, mimeType?: string}} opts
+ * @returns {Promise<{score: number, issues: string[], summary: string}>}
  */
-export async function analyzePhoto(imageBase64) {
-  return apiFetch('analyze-photo', { imageBase64 });
+export async function analyzePhoto({ imageBase64, mimeType }) {
+  return apiFetch('analyze-photo', { imageBase64, mimeType });
 }
 
 /**
  * POST /search-products
- * Asks Claude to generate product recommendations for the given issues.
- * @param {string[]} issues - Array of issue strings from analysis
- * @returns {Array<{ name: string, price: string, retailer: string, link: string, thumbnail: string }>}
+ * @param {{issues: string[]}} opts
+ * @returns {Promise<{recommendations: object[]}>}
  */
-export async function searchProducts(issues) {
+export async function searchProducts({ issues }) {
   return apiFetch('search-products', { issues });
 }
 
 /**
  * POST /generate-images
- * Calls DALL-E 3 to generate an organized "after" version of the space.
- * @param {string} originalImageBase64 - Original captured image (base64)
- * @param {string} planSummary - AI-generated summary of improvements
- * @returns {{ afterImageUrl: string }}
+ * @param {{originalImageBase64?: string, planSummary: string}} opts
+ * @returns {Promise<{afterImageUrl: string}>}
  */
-export async function generateImages(originalImageBase64, planSummary) {
+export async function generateImages({ originalImageBase64, planSummary }) {
   return apiFetch('generate-images', { originalImageBase64, planSummary });
 }
 
 /**
  * POST /save-project
- * Persists the project and its analysis to Supabase.
- * @param {object} project - { name, score, status }
- * @param {object} analysis - { issues, recommendations, after_image_url }
- * @returns {{ projectId: string, analysisId: string }}
+ * @param {{project: object, analysis: object}} opts
+ * @returns {Promise<{projectId: string, analysisId: string}>}
  */
-export async function saveProject(project, analysis) {
+export async function saveProject({ project, analysis }) {
   return apiFetch('save-project', { project, analysis });
 }
