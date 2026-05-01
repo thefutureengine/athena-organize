@@ -1,119 +1,230 @@
-import { navigate, goBack } from '../router.js';
-import { createBeforeAfterSlider } from '../components/BeforeAfterSlider.js';
-import { saveProject } from '../api.js';
+import { generateImages, saveProject } from '../api.js';
+import { BeforeAfterSlider } from '../components/BeforeAfterSlider.js';
 
 /**
- * Before/After page — drag-to-reveal slider comparison + "Apply This Plan" save CTA.
- * @param {HTMLElement} container
+ * Before/After page
+ *
+ * Shows a drag-to-reveal slider comparing the user's original photo (before)
+ * with a DALL-E generated aspirational vision (after).
+ *
+ * IMPORTANT HONESTY LABEL: The "after" image is clearly labelled as an
+ * "AI inspiration — an organized vision" rather than a literal prediction
+ * of the user's transformed space. DALL-E generates from text, not from
+ * the user's actual photo.
  */
-export function renderBeforeAfter(container) {
-  const imageBase64 = sessionStorage.getItem('capturedImageBase64');
-  const afterUrl    = sessionStorage.getItem('generatedAfterUrl');
-  const analysis    = JSON.parse(sessionStorage.getItem('analysisResult') || '{}');
-  const recs        = (() => {
-    try { return JSON.parse(sessionStorage.getItem('recommendations') || '[]'); }
-    catch { return []; }
-  })();
-
-  const beforeUrl    = imageBase64 ? `data:image/jpeg;base64,${imageBase64}` : '';
-  const afterImageUrl = afterUrl || 'https://placehold.co/600x450/242424/E91E63?text=After+%E2%9C%A8';
+export async function beforeAfterPage() {
+  const container = document.createElement('div');
+  container.className = 'page before-after-page';
 
   container.innerHTML = `
-    <div class="page page--before-after">
-      <header class="page-header">
-        <button class="btn-icon" id="backBtn" aria-label="Go back">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M19 12H5M12 5l-7 7 7 7"/>
+    <div class="page-header">
+      <h2>Before &amp; After</h2>
+      <p>Your space alongside an AI-generated organized vision.</p>
+    </div>
+
+    <div id="baContent">
+      <div class="loading-state">
+        <div class="spinner">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <circle cx="18" cy="18" r="14" stroke="rgba(255,255,255,0.1)" stroke-width="3"/>
+            <path d="M32 18 A14 14 0 0 0 18 4" stroke="#E91E63" stroke-width="3" stroke-linecap="round"/>
           </svg>
-        </button>
-        <h2 class="page-header__title">Before &amp; After</h2>
-        <div style="width:40px"></div>
-      </header>
-
-      <div class="ba__body">
-        <p class="ba__hint">Drag the handle left or right to compare</p>
-        <div id="sliderMount"></div>
-
-        <div class="ba__actions">
-          <button class="btn btn--primary btn--full" id="saveBtn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-              <polyline points="17 21 17 13 7 13 7 21"/>
-              <polyline points="7 3 7 8 15 8"/>
-            </svg>
-            Apply This Plan
-          </button>
-          <button class="btn btn--ghost btn--full" id="homeBtn">Back to Home</button>
         </div>
+        <p>Generating your organized vision…</p>
+        <span class="text-muted" style="font-size:0.78rem">DALL-E is crafting an inspiration image</span>
       </div>
     </div>
   `;
 
-  document.getElementById('backBtn').addEventListener('click', goBack);
-  document.getElementById('homeBtn').addEventListener('click', () => {
-    window.location.hash = '#/';
-  });
+  const contentEl = container.querySelector('#baContent');
 
-  // Mount the before/after slider
-  const sliderMount = document.getElementById('sliderMount');
-  if (beforeUrl) {
-    sliderMount.appendChild(createBeforeAfterSlider(beforeUrl, afterImageUrl));
-  } else {
-    sliderMount.innerHTML = `
-      <div class="ba__no-image">
-        <p>No before image available.</p>
-        <p style="margin-top:6px;font-size:0.8125rem;">Scan a space first to see a comparison.</p>
-      </div>
-    `;
+  // Retrieve data from sessionStorage
+  let analysis, photoBase64, photoMime;
+  try {
+    analysis     = JSON.parse(sessionStorage.getItem('athena_analysis') || 'null');
+    photoBase64  = sessionStorage.getItem('athena_photo_base64') || null;
+    photoMime    = sessionStorage.getItem('athena_photo_mime') || 'image/jpeg';
+  } catch {
+    analysis = null;
   }
 
-  // Save project + analysis to Supabase
-  document.getElementById('saveBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('saveBtn');
-    btn.disabled = true;
-    btn.innerHTML = `
-      <div class="spinner" style="width:18px;height:18px;border-width:2px;" aria-hidden="true"></div>
-      Saving…
+  if (!analysis) {
+    contentEl.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state__icon">🖼️</div>
+        <p class="empty-state__title">No analysis found</p>
+        <p>Scan a space first to generate your before &amp; after vision.</p>
+        <button class="btn btn--primary mt-16" id="goScan">Scan a Space</button>
+      </div>
     `;
+    contentEl.querySelector('#goScan')?.addEventListener('click', () => {
+      window.location.hash = '#/camera';
+    });
+    return container;
+  }
 
-    try {
-      const projectName = `Scan — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  const planSummary = analysis.summary || analysis.issues?.join('. ') || 'A cluttered space needing organization.';
 
-      const projectPayload = {
-        name: projectName,
-        score: analysis.score || 0,
-        status: 'analyzed',
-        // photo_url omitted — base64-only round-trip; future work: upload to Supabase Storage
-      };
+  try {
+    const { afterImageUrl } = await generateImages({
+      originalImageBase64: photoBase64 || undefined,
+      planSummary,
+    });
 
-      const analysisPayload = {
-        issues:           analysis.issues || [],
-        recommendations:  Array.isArray(recs) ? recs : [],
-        after_image_url:  afterUrl || '',
-      };
+    // Build before image data URL if we have the base64
+    const beforeSrc = photoBase64
+      ? `data:${photoMime};base64,${photoBase64}`
+      : null;
 
-      const result = await saveProject(projectPayload, analysisPayload);
+    contentEl.innerHTML = '';
 
-      btn.textContent = '✓ Plan Saved!';
-      btn.classList.add('btn--success');
-      btn.disabled = false;
+    // ── Disclaimer banner (honest labeling) ───────────────────────
+    const disclaimer = document.createElement('div');
+    disclaimer.className = 'ba-disclaimer';
+    disclaimer.innerHTML = `
+      <span class="ba-disclaimer__icon">ℹ️</span>
+      <span>
+        <strong>AI Inspiration Image</strong> — The "After" view is a photorealistic
+        vision generated by DALL-E based on your analysis. It shows what a beautifully
+        organised space <em>could</em> look like — it is not a literal transformation
+        of your specific room.
+      </span>
+    `;
+    contentEl.appendChild(disclaimer);
 
-      // Navigate home after brief confirmation
-      setTimeout(() => {
-        window.location.hash = '#/';
-      }, 1800);
+    // ── Slider wrapper ────────────────────────────────────────────
+    const sliderWrap = document.createElement('div');
+    sliderWrap.className = 'ba-slider-wrap';
+    sliderWrap.style.position = 'relative';
 
-      return result;
-    } catch (err) {
-      btn.disabled = false;
-      btn.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    if (beforeSrc && afterImageUrl) {
+      // Full interactive slider
+      const slider = BeforeAfterSlider({
+        beforeSrc,
+        afterSrc: afterImageUrl,
+        beforeAlt: 'Your space — before',
+        afterAlt: 'AI inspiration — an organized vision',
+      });
+      sliderWrap.appendChild(slider);
+
+      // Floating labels
+      const beforeLabel = document.createElement('div');
+      beforeLabel.className = 'ba-label ba-label--before';
+      beforeLabel.innerHTML = `<span>Before</span>`;
+      sliderWrap.appendChild(beforeLabel);
+
+      const afterLabel = document.createElement('div');
+      afterLabel.className = 'ba-label ba-label--after';
+      afterLabel.innerHTML = `<span>✨ AI Inspiration</span>`;
+      sliderWrap.appendChild(afterLabel);
+
+      // Drag hint
+      const dragHint = document.createElement('p');
+      dragHint.style.cssText = 'text-align:center;font-size:0.78rem;color:var(--text-muted);margin-top:8px;';
+      dragHint.textContent = '← Drag to compare →';
+      contentEl.appendChild(sliderWrap);
+      contentEl.appendChild(dragHint);
+    } else {
+      // Fallback: show just the after image if no before photo
+      const img = document.createElement('img');
+      img.src = afterImageUrl;
+      img.alt = 'AI inspiration — an organized vision';
+      img.style.cssText = 'width:100%;border-radius:var(--radius-lg);';
+      sliderWrap.appendChild(img);
+
+      const afterLabel = document.createElement('div');
+      afterLabel.className = 'ba-label ba-label--after';
+      afterLabel.innerHTML = `<span>✨ AI Inspiration</span>`;
+      sliderWrap.appendChild(afterLabel);
+      contentEl.appendChild(sliderWrap);
+    }
+
+    // ── Analysis summary card ─────────────────────────────────────
+    if (analysis.summary) {
+      const summaryCard = document.createElement('div');
+      summaryCard.className = 'card';
+      summaryCard.innerHTML = `
+        <p style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-sec);margin-bottom:8px;">
+          Organization Plan
+        </p>
+        <p style="font-size:0.9rem;color:var(--text-sec);line-height:1.6;">${escHtml(analysis.summary)}</p>
+      `;
+      contentEl.appendChild(summaryCard);
+    }
+
+    // ── Apply / Save CTA ──────────────────────────────────────────
+    const ctaWrap = document.createElement('div');
+    ctaWrap.innerHTML = `
+      <button class="btn btn--primary btn--full" id="applyBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
           <polyline points="17 21 17 13 7 13 7 21"/>
           <polyline points="7 3 7 8 15 8"/>
         </svg>
-        Apply This Plan`;
-      alert(`Could not save plan: ${err.message}\n\nEnsure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set in your Netlify environment.`);
-    }
-  });
+        Save This Project
+      </button>
+      <div id="saveStatus" style="text-align:center;margin-top:8px;font-size:0.82rem;color:var(--text-sec);"></div>
+    `;
+    contentEl.appendChild(ctaWrap);
+
+    // Save handler
+    ctaWrap.querySelector('#applyBtn').addEventListener('click', async () => {
+      const btn = ctaWrap.querySelector('#applyBtn');
+      const statusEl = ctaWrap.querySelector('#saveStatus');
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      statusEl.textContent = '';
+
+      try {
+        let recommendations = null;
+        try {
+          recommendations = JSON.parse(sessionStorage.getItem('athena_recommendations') || 'null');
+        } catch { /* ignore */ }
+
+        await saveProject({
+          project: {
+            name: `Space ${new Date().toLocaleDateString()}`,
+            score: analysis.score,
+            status: 'analyzed',
+          },
+          analysis: {
+            issues:            analysis.issues || [],
+            recommendations:   recommendations || [],
+            before_image_url:  null, // base64 not persisted per non-goal spec
+            after_image_url:   afterImageUrl,
+          },
+        });
+
+        btn.textContent = '✓ Saved';
+        statusEl.textContent = 'Project saved to your history.';
+
+        // Navigate to scans after brief delay
+        setTimeout(() => { window.location.hash = '#/scans'; }, 1200);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Save This Project';
+        statusEl.textContent = `Save failed: ${escHtml(err.message)}`;
+      }
+    });
+
+  } catch (err) {
+    contentEl.innerHTML = `
+      <div class="error-state">
+        Failed to generate inspiration image: ${escHtml(err.message)}
+        <br><br>
+        <button class="btn btn--secondary" onclick="history.back()">← Go Back</button>
+      </div>
+    `;
+  }
+
+  return container;
+}
+
+function escHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
