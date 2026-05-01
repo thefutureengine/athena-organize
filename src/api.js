@@ -1,9 +1,6 @@
 /**
- * Fetch wrappers for the four Netlify Functions.
- * All functions are POST, return JSON, and handle CORS.
- *
- * All wrappers accept a single options object so call sites can pass
- * named fields without worrying about positional order.
+ * Fetch wrappers for the four Netlify Functions. All POST + JSON.
+ * All wrappers take a single options object so call sites use named fields.
  */
 
 const BASE = '/.netlify/functions';
@@ -34,38 +31,27 @@ async function apiFetch(endpoint, body) {
   return data;
 }
 
-/**
- * POST /analyze-photo
- * @param {{imageBase64: string, mimeType?: string}} opts
- * @returns {Promise<{score: number, issues: string[], summary: string}>}
- */
+/** POST /analyze-photo */
 export async function analyzePhoto({ imageBase64, mimeType }) {
   return apiFetch('analyze-photo', { imageBase64, mimeType });
 }
 
 /**
  * POST /search-products
- * @param {{issues: string[]}} opts
- * @returns {Promise<{recommendations: object[]}>}
+ * @param {{issues: string[], measurements?: object|null}} opts
+ *   measurements (optional): { width, depth, height, unit } — when provided,
+ *   the server filters recommendations to products that fit the measured space.
  */
-export async function searchProducts({ issues }) {
-  return apiFetch('search-products', { issues });
+export async function searchProducts({ issues, measurements = null }) {
+  return apiFetch('search-products', { issues, measurements });
 }
 
-/**
- * POST /generate-images
- * @param {{originalImageBase64?: string, planSummary: string}} opts
- * @returns {Promise<{afterImageUrl: string}>}
- */
+/** POST /generate-images */
 export async function generateImages({ originalImageBase64, planSummary }) {
   return apiFetch('generate-images', { originalImageBase64, planSummary });
 }
 
-/**
- * POST /save-project
- * @param {{project: object, analysis: object}} opts
- * @returns {Promise<{projectId: string, analysisId: string}>}
- */
+/** POST /save-project */
 export async function saveProject({ project, analysis }) {
   return apiFetch('save-project', { project, analysis });
 }

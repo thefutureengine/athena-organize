@@ -1,14 +1,16 @@
 import { navigate, goBack } from '../router.js';
 import { createScoreCircle } from '../components/ScoreCircle.js';
-import { searchProducts } from '../api.js';
 
 /**
  * Analysis page — score circle, AI summary, bulleted issues list,
  * and CTA to load product recommendations.
- * @param {HTMLElement} container
+ *
+ * Reads the analysis result that camera.js stored under 'athena_analysis'
+ * (the canonical key used app-wide). The recommendations page does its
+ * own searchProducts fetch — this page just navigates.
  */
 export function renderAnalysis(container) {
-  const raw = sessionStorage.getItem('analysisResult');
+  const raw = sessionStorage.getItem('athena_analysis');
 
   if (!raw) {
     container.innerHTML = `
@@ -28,8 +30,8 @@ export function renderAnalysis(container) {
         </div>
       </div>
     `;
-    document.getElementById('backBtn').addEventListener('click', goBack);
-    document.getElementById('goScanBtn').addEventListener('click', () => navigate('#/camera'));
+    container.querySelector('#backBtn').addEventListener('click', goBack);
+    container.querySelector('#goScanBtn').addEventListener('click', () => navigate('#/camera'));
     return;
   }
 
@@ -42,6 +44,28 @@ export function renderAnalysis(container) {
 
   const { score, issues, summary } = analysis;
   const scoreLabel = score >= 80 ? 'Great' : score >= 60 ? 'Good' : score >= 40 ? 'Fair' : 'Needs Work';
+
+  // Surface measurements if user provided any
+  let measurementsBadge = '';
+  try {
+    const m = JSON.parse(sessionStorage.getItem('athena_measurements') || 'null');
+    if (m) {
+      const parts = [];
+      if (m.width)  parts.push(`W ${m.width}${m.unit}`);
+      if (m.depth)  parts.push(`D ${m.depth}${m.unit}`);
+      if (m.height) parts.push(`H ${m.height}${m.unit}`);
+      if (parts.length) {
+        measurementsBadge = `
+          <div class="analysis__measurement-pill" aria-label="Room dimensions">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7h18M3 17h18M7 7v10M17 7v10"/>
+            </svg>
+            <span>${parts.join(' · ')}</span>
+          </div>
+        `;
+      }
+    }
+  } catch {}
 
   container.innerHTML = `
     <div class="page page--analysis">
@@ -56,31 +80,18 @@ export function renderAnalysis(container) {
       </header>
 
       <div class="analysis__body">
-        <!-- Score circle -->
         <div class="analysis__score-wrap" id="scoreMount"></div>
 
-        <!-- Score label -->
-        <div style="text-align:center; margin-top:-8px; margin-bottom:4px;">
-          <span style="
-            display:inline-block;
-            background: var(--accent-glow);
-            color: var(--accent);
-            font-size:0.75rem;
-            font-weight:700;
-            text-transform:uppercase;
-            letter-spacing:1px;
-            border-radius:6px;
-            padding:3px 10px;
-          ">${scoreLabel}</span>
+        <div class="analysis__score-meta">
+          <span class="analysis__score-label">${scoreLabel}</span>
+          ${measurementsBadge}
         </div>
 
-        <!-- AI Summary -->
         <div class="card analysis__summary-card">
           <p class="analysis__summary-title">AI Summary</p>
           <p class="analysis__summary-text">${escapeHtml(summary || 'Analysis complete. See issues below for details.')}</p>
         </div>
 
-        <!-- Issues list -->
         <div class="card">
           <p class="analysis__issues-title">Issues Found (${Array.isArray(issues) ? issues.length : 0})</p>
           <ul class="issues-list" aria-label="Organization issues">
@@ -96,7 +107,6 @@ export function renderAnalysis(container) {
           </ul>
         </div>
 
-        <!-- CTA -->
         <button class="btn btn--primary btn--full" id="recsBtn">
           View Recommendations
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -107,33 +117,14 @@ export function renderAnalysis(container) {
     </div>
   `;
 
-  document.getElementById('backBtn').addEventListener('click', goBack);
+  container.querySelector('#backBtn').addEventListener('click', goBack);
 
-  // Mount animated score circle
-  const scoreMount = document.getElementById('scoreMount');
+  const scoreMount = container.querySelector('#scoreMount');
   scoreMount.appendChild(createScoreCircle(score || 0));
 
-  // Load product recommendations
-  document.getElementById('recsBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('recsBtn');
-    btn.disabled = true;
-    btn.innerHTML = `
-      <div class="spinner" style="width:18px;height:18px;border-width:2px;" aria-hidden="true"></div>
-      Finding products…
-    `;
-
-    try {
-      const recs = await searchProducts(Array.isArray(issues) ? issues : []);
-      sessionStorage.setItem('recommendations', JSON.stringify(recs));
-      navigate('#/recommendations');
-    } catch (err) {
-      btn.disabled = false;
-      btn.innerHTML = `View Recommendations
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M5 12h14M12 5l7 7-7 7"/>
-        </svg>`;
-      alert(`Could not load recommendations: ${err.message}`);
-    }
+  // Just navigate — recommendations page handles its own product fetch.
+  container.querySelector('#recsBtn').addEventListener('click', () => {
+    navigate('#/recommendations');
   });
 }
 

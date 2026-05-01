@@ -51,8 +51,15 @@ export async function recommendationsPage() {
     return container;
   }
 
+  // Pull optional measurements so the server can filter recommendations
+  // to products that actually fit the space (cuts wasted recs + tokens).
+  let measurements = null;
   try {
-    const result = await searchProducts({ issues: analysis.issues });
+    measurements = JSON.parse(sessionStorage.getItem('athena_measurements') || 'null');
+  } catch {}
+
+  try {
+    const result = await searchProducts({ issues: analysis.issues, measurements });
     const recommendations = result.recommendations || [];
 
     if (recommendations.length === 0) {

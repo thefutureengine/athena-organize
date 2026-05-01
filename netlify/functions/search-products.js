@@ -34,9 +34,9 @@ exports.handler = async (event) => {
     return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Method not allowed' }) };
   }
 
-  let issues;
+  let issues, measurements;
   try {
-    ({ issues } = JSON.parse(event.body || '{}'));
+    ({ issues, measurements } = JSON.parse(event.body || '{}'));
   } catch {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid JSON body' }) };
   }
@@ -90,11 +90,14 @@ Return ONLY a valid JSON array (no markdown, no explanation). Schema:
   }
 ]`;
 
+  const measurementBlock = formatMeasurements(measurements);
   const userMessage = `Here are the organization issues found in this space. For each, provide good/better/best product recommendations with real, verified deep product-page links:
 
-${limitedIssues.map((iss, i) => `${i + 1}. ${iss}`).join('\n')}
+${limitedIssues.map((iss, i) => `${i + 1}. ${iss}`).join('\n')}${measurementBlock}
 
-Remember: every link must be a deep product URL (with product name or ID in the path), not just a domain homepage.`;
+Remember:
+- Every link must be a deep product URL (with product name or ID in the path), not just a domain homepage.
+- ${measurements ? 'CRITICAL: Only recommend products whose stated dimensions FIT WITHIN the room measurements above. If a product is too big, omit it entirely (set that tier to null) rather than recommending something that will not fit.' : 'No room measurements were provided — recommend products at typical sizes.'}`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -239,3 +242,17 @@ function isValidImageUrl(url) {
     return false;
   }
 }
+
+/**
+ * Format measurements for the Claude prompt. Returns an empty string if none.
+ */
+function formatMeasurements(m) {
+  if (!m || typeof m !== 'object') return '';
+  const parts = [];
+  if (m.width)  parts.push(`width ${m.width}${m.unit || 'ft'}`);
+  if (m.depth)  parts.push(`depth ${m.depth}${m.unit || 'ft'}`);
+  if (m.height) parts.push(`height ${m.height}${m.unit || 'ft'}`);
+  if (parts.length === 0) return '';
+  return `\n\nROOM MEASUREMENTS (products MUST fit these dimensions):\n${parts.join(', ')}\n`;
+}
+
